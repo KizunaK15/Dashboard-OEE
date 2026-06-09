@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industrial OEE Dashboard</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Konfigurasi Tema Warna
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { bg: '#121417', card: '#1c1f26', border: '#2d333d' },
+                        neon: { green: '#00e676', red: '#ff3d00', blue: '#00d2ff', yellow: '#ffb300' }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121417; }
+        ::-webkit-scrollbar-thumb { background: #2d333d; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .lamp-glow-green { box-shadow: 0 0 15px #00e676; }
+        .lamp-glow-red { box-shadow: 0 0 15px #ff3d00; }
+    </style>
+</head>
+<body class="bg-dark-bg text-white font-sans p-2 md:p-4 min-h-screen">
+
+    <main class="max-w-7xl mx-auto space-y-6">
+        
+        <header class="flex flex-col md:flex-row justify-between items-center border-b border-dark-border pb-4 gap-4">
+            <div class="flex items-center gap-4 w-full md:w-auto">
+                <div id="system-status" class="px-3 py-1 rounded-full text-xs font-bold border border-neon-red text-neon-red bg-neon-red/10">
+                    OFFLINE
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">MONITORING OEE</h1>
+                    <span class="text-xs text-gray-400">Real-time Analytics</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neon-green/10 border border-neon-green text-neon-green text-xs font-mono">
+                    <i class="far fa-clock"></i> <span id="live-clock">--:--:--</span>
+                </div>
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-dark-border text-gray-400 text-xs">
+                    <i class="fas fa-sync-alt animate-spin-slow"></i> <span id="last-update">Syncing...</span>
+                </div>
+                <button onclick="toggleModal('settingsModal')" class="p-2 rounded-lg bg-dark-border hover:bg-dark-card text-gray-300 hover:text-neon-green transition-all duration-300">
+                    <i class="fas fa-cog text-lg"></i>
+                </button>
+            </div>
+        </header>
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-dark-card border border-dark-border rounded-2xl p-5 relative overflow-hidden group hover:border-neon-blue transition-all">
+                <span class="text-[10px] uppercase text-gray-400 block mb-1">Machine Name</span>
+                <h2 id="disp-nama-mesin" class="text-lg font-semibold text-white tracking-normal">--</h2>
+                <i class="fas fa-robot absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-neon-blue/10 transition-colors"></i>
+            </div>
+            <div class="bg-dark-card border border-dark-border rounded-2xl p-5 relative overflow-hidden group hover:border-neon-green transition-all">
+                <span class="text-[10px] uppercase text-gray-400 block mb-1">Current Operator</span>
+                <h2 id="disp-operator" class="text-lg font-semibold text-white tracking-normal">--</h2>
+                <i class="fas fa-user-gear absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-neon-blue/10 transition-colors"></i>
+            </div>
+            <div class="bg-dark-card border border-dark-border rounded-2xl p-5 relative overflow-hidden group hover:border-neon-yellow transition-all">
+                <span class="text-[10px] uppercase text-gray-400 block mb-1">Active Product</span>
+                <h2 id="disp-nama-produk" class="text-lg font-semibold text-white tracking-normal">--</h2>
+                <i class="fas fa-box-open absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-neon-blue/10 transition-colors"></i>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-12 gap-4">
+            <article class="md:col-span-8 bg-dark-card border border-dark-border rounded-full px-6 py-3 shadow-inner flex flex-wrap justify-around items-center gap-4 text-xs hover:border-neon-red transition-all duration-300">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-business-time text-neon-green text-sm"></i>
+                    <span class="text-gray-300">JAM KERJA:</span>
+                    <strong id="disp-jam-kerja" class="text-neon-green">--:-- s/d --:--</strong>
+                </div>
+                
+                <div class="hidden md:block w-px h-4 bg-dark-border"></div>
+                
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-coffee text-neon-green text-sm"></i>
+                    <span class="text-gray-300">JEDA:</span>
+                    <strong id="disp-jeda" class="text-neon-green">--</strong>
+                </div>
+            </article>
+
+            <article class="md:col-span-4 grid grid-cols-2 gap-4">
+                <div class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col justify-center hover:border-neon-blue transition-all duration-300">
+                    <span class="text-[10px] uppercase text-gray-400 mb-1">Cycle Target</span>
+                    <div class="flex items-end gap-1">
+                        <span id="cycle-target" class="text-2xl font-bold text-neon-blue">0</span>
+                        <small class="text-gray-500 mb-1">/sec</small>
+                    </div>
+                    <i class="fas fa-stopwatch absolute -right-1 -bottom-1 text-3xl text-white/5"></i>
+                </div>
+
+                <div class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col justify-center hover:border-neon-yellow transition-all duration-300">
+                    <span class="text-[10px] uppercase text-gray-400 mb-1">Product Target</span>
+                    <div class="flex items-end gap-1">
+                        <span id="disp-target-produk" class="text-2xl font-bold text-neon-yellow">0</span>
+                        <small class="text-gray-500 mb-1">Pcs</small>
+                    </div>
+                    <i class="fas fa-bullseye absolute -right-1 -bottom-1 text-3xl text-white/5"></i>
+                </div>
+            </article>
+        </section>
+
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col items-center justify-center hover:border-neon-green transition-all duration-300">
+                <span class="text-[10px] uppercase text-gray-400 absolute top-4 left-4">Running Time</span>
+                <div class="relative w-32 h-20 mt-4">
+                    <svg viewBox="0 0 100 50" class="w-full h-full">
+                        <path d="M 10,50 A 40,40 0 0 1 90,50" fill="none" stroke="#2d333d" stroke-width="8" stroke-linecap="round" />
+                        <path id="gauge-progress" d="M 10,50 A 40,40 0 0 1 90,50" fill="none" stroke="#00e676" stroke-width="8" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="125.6" style="transition: stroke-dashoffset 0.5s ease;" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-end">
+                        <span id="menit-sekarang" class="text-xl font-bold text-white">0</span>
+                        <span class="text-[8px] text-gray-500 uppercase">Min</span>
+                    </div>
+                </div>
+                <i class="fas fa-stopwatch absolute -right-1 -bottom-1 text-2xl text-white/5"></i>
+            </article>
+            
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col items-center justify-center hover:border-neon-green transition-all duration-300">
+                <span class="text-[10px] uppercase text-gray-400 absolute top-4 left-4">Total Plan</span>
+                <div class="relative w-32 h-20 mt-4">
+                    <svg viewBox="0 0 100 50" class="w-full h-full">
+                        <path d="M 10,50 A 40,40 0 0 1 90,50" fill="none" stroke="#2d333d" stroke-width="8" stroke-linecap="round" />
+                        <path d="M 10,50 A 40,40 0 0 1 90,50" fill="none" stroke="#00e676" stroke-width="8" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="0" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-end">
+                        <span id="menit-total" class="text-xl font-bold text-white">0</span>
+                        <span class="text-[8px] text-gray-500 uppercase">Min</span>
+                    </div>
+                </div>
+                <i class="fas fa-calendar-alt absolute -right-1 -bottom-1 text-2xl text-white/5"></i>
+            </article>
+
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col items-center justify-center hover:border-neon-blue transition-all duration-300">
+                <span class="text-[10px] uppercase text-gray-400">Total Downtime</span>
+                <div class="mt-1"><span id="total-problem" class="text-2xl font-bold text-neon-red">0</span> <small class="text-gray-500">Sec</small></div>
+                <i class="fas fa-exclamation-triangle absolute -right-2 -bottom-2 text-4xl text-white/5"></i>
+            </article>
+
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 relative overflow-hidden flex flex-col items-center justify-center hover:border-neon-yellow transition-all duration-300">
+                <span class="text-[10px] uppercase text-gray-400">Late Start</span>
+                <div class="mt-1"><span id="late-start" class="text-2xl font-bold text-neon-yellow">0</span> <small class="text-gray-500">Sec</small></div>
+                <i class="fas fa-percentage absolute -right-2 -bottom-2 text-4xl text-white/5"></i>
+            </article>
+        </section>
+
+        <section class="bg-dark-card border border-dark-border rounded-xl p-6 hover:border-neon-blue transition-all duration-300">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-[10px] uppercase text-gray-400 tracking-wider">Problem</span>
+                    <div id="lamp-problem" class="w-10 h-10 rounded-full bg-dark-border border-2 border-gray-700 transition-all duration-300"></div>
+                    <div class="flex items-baseline gap-1">
+                        <span id="count-problem" class="font-bold text-sm">0</span>
+                        <span class="text-xs text-gray-500">Sec</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-[10px] uppercase text-gray-400 tracking-wider">System</span>
+                    <div id="lamp-onoff" class="w-10 h-10 rounded-full bg-dark-border border-2 border-gray-700 transition-all duration-300"></div>
+                    <span class="font-bold text-sm text-gray-500">STOP</span>
+                </div>
+
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-[10px] uppercase text-gray-400 tracking-wider">Produksi</span>
+                    <div id="lamp-produksi" class="w-10 h-10 rounded-full bg-dark-border border-2 border-gray-700 transition-all duration-300"></div>
+                    <div class="flex items-baseline gap-1">
+                        <span id="count-produksi" class="font-bold text-sm">0</span>
+                        <span class="text-xs text-gray-500">Pcs</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-[10px] uppercase text-gray-400 tracking-wider">Reject</span>
+                    <div id="lamp-cacat" class="w-10 h-10 rounded-full bg-dark-border border-2 border-gray-700 transition-all duration-300"></div>
+                    <div class="flex items-baseline gap-1">
+                        <span id="count-cacat" class="font-bold text-sm">0</span>
+                        <span class="text-xs text-gray-500">Pcs</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 text-center">
+                <span class="text-[10px] text-gray-400 block mb-1">AVAILABILITY</span>
+                <span id="val-availability" class="text-xl md:text-2xl font-extrabold text-white">0%</span>
+            </article>
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 text-center">
+                <span class="text-[10px] text-gray-400 block mb-1">PERFORMANCE</span>
+                <span id="val-performance" class="text-xl md:text-2xl font-extrabold text-white">0%</span>
+            </article>
+            <article class="bg-dark-card border border-dark-border rounded-xl p-4 text-center">
+                <span class="text-[10px] text-gray-400 block mb-1">QUALITY</span>
+                <span id="val-quality" class="text-xl md:text-2xl font-extrabold text-white">0%</span>
+            </article>
+            <article class="bg-dark-card border border-neon-green/50 rounded-xl p-4 text-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-neon-green/5"></div>
+                <span class="text-[10px] text-neon-green block mb-1 relative z-10 font-bold">OEE SCORE</span>
+                <span id="val-oee" class="text-xl md:text-2xl font-extrabold text-neon-green relative z-10">0%</span>
+            </article>
+        </section>
+
+        <section class="bg-dark-card border border-dark-border rounded-[2.5rem] p-6 md:p-8 space-y-6">
+            <div>
+                <h3 class="text-center text-sm font-medium text-[#94a3b8] tracking-wider mb-3">
+                    <i class="fas fa-chart-line text-[#00d2ff] mr-2"></i> AVAILABILITY, PERFORMANCE & QUALITY
+                </h3>
+                
+                <div class="flex justify-center items-center gap-3 mb-2">
+                    <div class="flex items-center gap-1.5"><div class="w-6 h-2.5 border-2 border-[#00d2ff] bg-[#00d2ff]/20"></div><span class="text-[10px] text-white">Availability</span></div>
+                    <div class="flex items-center gap-1.5"><div class="w-6 h-2.5 border-2 border-[#ffb300] bg-[#ffb300]/20"></div><span class="text-[10px] text-white">Performance</span></div>
+                    <div class="flex items-center gap-1.5"><div class="w-6 h-2.5 border-2 border-[#ff3d00] bg-[#ff3d00]/20"></div><span class="text-[10px] text-white">Quality</span></div>
+                </div>
+                
+                <div class="w-full overflow-x-auto pb-4 cursor-grab active:cursor-grabbing">
+                    <div class="min-w-[900px] h-[320px]"><canvas id="chart-metrics-combined"></canvas></div>
+                </div>
+            </div>
+            
+            <div class="border-t border-dark-border/50 mx-16"></div>
+
+            <div>
+                <h3 class="text-center text-sm font-medium text-[#94a3b8] tracking-wider mb-3">
+                    <i class="fas fa-star text-[#00e676] mr-2"></i> OVERALL EQUIPMENT EFFECTIVENESS (OEE)
+                </h3>
+                
+                <div class="flex justify-center items-center mb-4">
+                    <div class="flex items-center gap-1.5"><div class="w-6 h-2.5 border-2 border-[#00e676] bg-[#00e676]/20"></div><span class="text-[11px] text-white">OEE</span></div>
+                </div>
+
+                <div class="w-full overflow-x-auto pb-4 cursor-grab active:cursor-grabbing">
+                    <div class="min-w-[900px] h-[320px]"><canvas id="chart-oee-only"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden w-full h-full">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onclick="toggleModal('settingsModal')"></div>
+        <div class="relative top-20 mx-auto w-[90%] max-w-lg bg-dark-card border border-neon-green rounded-2xl shadow-[0_0_30px_rgba(0,230,118,0.2)] p-6 text-white max-h-[85vh] overflow-y-auto transform transition-all">
+            
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-neon-green flex items-center gap-2"><i class="fas fa-cog"></i> Konfigurasi Mesin</h2>
+                <button onclick="toggleModal('settingsModal')" class="text-gray-400 hover:text-neon-red text-2xl font-bold">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <div class="space-y-1"><label class="text-xs text-gray-400">Nama Mesin</label><input type="text" id="input-nama-mesin" class="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 focus:border-neon-green focus:outline-none transition-colors" placeholder="CNC-01"></div>
+                <div class="space-y-1"><label class="text-xs text-gray-400">Operator</label><input type="text" id="input-operator" class="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 focus:border-neon-green focus:outline-none transition-colors"></div>
+                <div class="space-y-1"><label class="text-xs text-gray-400">Nama Produk</label><input type="text" id="input-nama-produk" class="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 focus:border-neon-green focus:outline-none transition-colors"></div>
+                <div class="space-y-1"><label class="text-xs text-gray-400">Target Cycle Time (Detik)</label><input type="number" id="input-cycle" class="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 focus:border-neon-green focus:outline-none transition-colors"></div>
+                <div class="space-y-1"><label class="text-xs text-gray-400">Target Produk</label><input type="number" id="input-target-produk" class="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 focus:border-neon-green focus:outline-none transition-colors"></div>
+
+                <div class="pt-2 border-t border-dark-border">
+                    <h3 class="text-sm font-bold text-neon-green mb-3">🕒 Jadwal Kerja</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-xs text-gray-400">Jam Mulai</label><input type="time" id="input-start" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                        <div><label class="text-xs text-gray-400">Jam Selesai</label><input type="time" id="input-end" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-dark-border">
+                    <h3 class="text-sm font-bold text-neon-green mb-3">☕ Jadwal Istirahat</h3>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="text-xs text-gray-400">Istirahat 1 Mulai</label><input type="time" id="j1-s" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                            <div><label class="text-xs text-gray-400">Selesai</label><input type="time" id="j1-e" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="text-xs text-gray-400">Istirahat 2 Mulai</label><input type="time" id="j2-s" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                            <div><label class="text-xs text-gray-400">Selesai</label><input type="time" id="j2-e" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="text-xs text-gray-400">Istirahat 3 Mulai</label><input type="time" id="j3-s" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                            <div><label class="text-xs text-gray-400">Selesai</label><input type="time" id="j3-e" class="w-full bg-dark-bg border border-dark-border rounded px-2 py-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-4 border-t border-dark-border flex flex-col gap-3">
+                    <button onclick="saveConfig()" class="w-full bg-neon-green hover:bg-green-500 text-black font-bold py-3 rounded-lg shadow-[0_0_15px_rgba(0,230,118,0.4)] transition-all flex justify-center items-center gap-2">
+                        <i class="fas fa-save"></i> SIMPAN KONFIGURASI
+                    </button>
+
+                    <button onclick="triggerResetShift()" class="w-full bg-transparent border border-neon-red text-neon-red hover:bg-neon-red hover:text-black font-bold py-3 rounded-lg transition-all flex justify-center items-center gap-2 opacity-80 hover:opacity-100">
+                        <i class="fas fa-skull-crossbones"></i> HARD RESET SHIFT (DATA 0)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="firebaseConfig.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

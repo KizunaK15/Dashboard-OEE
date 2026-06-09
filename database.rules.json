@@ -1,0 +1,14 @@
+{
+  "rules": {
+    ".read": true,
+    "config_mesin": {
+      ".write": true
+    },
+    "monitoring": {
+      ".write": false
+    },
+    "history_log": {
+      ".write": false
+    }
+  }
+}
